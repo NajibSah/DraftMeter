@@ -1,0 +1,6 @@
+{
+  "name": "DraftMeter - Writing Quality Analyzer",
+  "description": "A professional writing tool to measure draft maturity, word count, and readability using AI insights.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["AI Analysis", "Real-time Statistics"]
+}
