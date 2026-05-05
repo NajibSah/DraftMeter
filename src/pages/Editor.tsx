@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   FileText, 
@@ -18,7 +18,7 @@ import {
   ShieldCheck,
   ArrowLeft
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 export default function Editor() {
   const [text, setText] = useState("");
@@ -27,6 +27,21 @@ export default function Editor() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showHowTo, setShowHowTo] = useState(true);
+
+  const editorScrollRef = useRef<HTMLDivElement>(null);
+
+  const [searchParams] = useSearchParams();
+
+  const handleQuickStart = useCallback(() => {
+    setText("The future of professional writing isn't just about AI generation—it's about AI evaluation. DraftMeter allows writers to gauge the 'maturity' of their prose by measuring structural integrity, sentence variation, and overall flow.\n\nBy providing a real-time 'Maturity Score', users can visualize their progress from a rough sketch to a polished final draft. It’s the essential tool for creators who care about the craftsmanship of their words.");
+    setShowHowTo(false);
+  }, []);
+
+  useEffect(() => {
+    if (searchParams.get("sample") === "true") {
+      handleQuickStart();
+    }
+  }, [searchParams, handleQuickStart]);
 
   // Statistics Calculation
   const stats = useMemo(() => {
@@ -81,9 +96,11 @@ export default function Editor() {
     }
   };
 
-  const handleQuickStart = () => {
-    setText("The future of professional writing isn't just about AI generation—it's about AI evaluation. DraftMeter allows writers to gauge the 'maturity' of their prose by measuring structural integrity, sentence variation, and overall flow.\n\nBy providing a real-time 'Maturity Score', users can visualize their progress from a rough sketch to a polished final draft. It’s the essential tool for creators who care about the craftsmanship of their words.");
-    setShowHowTo(false);
+  const scrollToEditorAndLoad = () => {
+    if (editorScrollRef.current) {
+      editorScrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    handleQuickStart();
   };
 
   return (
@@ -225,7 +242,7 @@ export default function Editor() {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto w-full bg-stone-100 relative">
+        <div ref={editorScrollRef} className="flex-1 overflow-y-auto w-full bg-stone-100 relative">
           <div className="max-w-3xl mx-auto w-full p-4 md:p-12 lg:p-16 pb-20">
             <div className="bg-white rounded-3xl shadow-[0_1px_3px_rgba(0,0,0,0.05)] border border-stone-200 min-h-[85vh] p-8 md:p-16 relative mb-24">
               <textarea
@@ -312,10 +329,7 @@ export default function Editor() {
                     Join thousands of writers who use DraftMeter to perfect their professional correspondence.
                   </p>
                   <button 
-                    onClick={() => {
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                      if (!text) handleQuickStart();
-                    }}
+                    onClick={scrollToEditorAndLoad}
                     className="bg-white text-stone-900 px-8 py-3 rounded-xl text-sm font-bold hover:scale-105 transition-transform"
                   >
                     Load Sample Now

@@ -123,13 +123,13 @@ export default function Home() {
         <div className="mx-auto max-w-4xl text-center">
           <div className="rounded-[4rem] bg-stone-900 px-12 py-20 text-white shadow-2xl relative overflow-hidden">
             <div className="relative z-10">
-              <h2 className="mb-6 text-4xl font-bold tracking-tight sm:text-6xl">Ready to polish your prose?</h2>
+              <h2 className="mb-6 text-4xl font-bold tracking-tight sm:text-6xl">Master your craft.</h2>
               <p className="mx-auto mb-10 max-w-2xl text-xl text-stone-400">Join thousands of writers who use DraftMeter to perfect their professional correspondence and creative writing.</p>
               <Link 
-                to="/editor" 
+                to="/editor?sample=true" 
                 className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-10 py-5 text-xl font-bold text-stone-900 transition-all hover:bg-stone-100 active:scale-95"
               >
-                Open DraftMeter
+                Load Sample Now
                 <ArrowRight className="h-6 w-6" />
               </Link>
             </div>
