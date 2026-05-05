@@ -19,11 +19,17 @@ import {
   ArrowLeft
 } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
+import { GoogleGenAI } from "@google/genai";
+
+// Initialize Gemini
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export default function Editor() {
   const [text, setText] = useState("");
   const [isAiLoading, setIsAiLoading] = useState(false);
-  const [aiFeedback, setAiFeedback] = useState<null | { score: number; summary: string; tips: string[] }>(null);
+  const [aiFeedback, setAiFeedback] = useState<null | { score: number; summary: string; critique: string; tips: string[] }>(null);
+  
+  const WORD_LIMIT = 1500;
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showHowTo, setShowHowTo] = useState(true);
@@ -72,25 +78,32 @@ export default function Editor() {
   const analyzeWithAi = async () => {
     if (!text.trim() || isAiLoading) return;
     
+    if (stats.words > WORD_LIMIT) {
+      alert(`Please reduce your draft to under ${WORD_LIMIT} words for a deep analysis.`);
+      return;
+    }
+    
     setIsAiLoading(true);
     setIsSidebarOpen(false); // Close mobile sidebar if open
     try {
-      const response = await fetch("/api/analyze", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        config: {
+          systemInstruction: "You are a world-class critical editor. Provide a rigorous, unvarnished analysis of the provided text. Focus on identifying structural weaknesses, logical gaps, and stylistic inconsistencies. Return a JSON object with: 'score' (0-100 reflecting structural maturity), 'summary' (a brief overview), 'critique' (a detailed critical evaluation of flaws and weaknesses, max 100 words), and 'tips' (3 actionable strategies for improvement).",
+          responseMimeType: "application/json",
         },
-        body: JSON.stringify({ text }),
+        contents: text
       });
 
-      if (!response.ok) {
-        throw new Error("Analysis failed");
+      if (!response.text) {
+        throw new Error("No response text from AI");
       }
 
-      const data = await response.json();
+      const data = JSON.parse(response.text);
       setAiFeedback(data);
     } catch (error) {
       console.error("AI Analysis failed:", error);
+      alert(error instanceof Error ? error.message : "An unexpected error occurred");
     } finally {
       setIsAiLoading(false);
     }
@@ -193,8 +206,8 @@ export default function Editor() {
           </button>
           <button 
             onClick={analyzeWithAi}
-            disabled={isAiLoading || !text.trim()}
-            className="w-full group relative overflow-hidden flex items-center justify-center gap-2 rounded-2xl bg-stone-900 px-4 py-4 text-sm font-bold text-white transition-all hover:bg-stone-800 disabled:opacity-50"
+            disabled={isAiLoading || !text.trim() || stats.words > WORD_LIMIT}
+            className="w-full group relative overflow-hidden flex items-center justify-center gap-2 rounded-2xl bg-stone-900 px-4 py-4 text-sm font-bold text-white transition-all hover:bg-stone-800 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Sparkles className={`w-4 h-4 ${isAiLoading ? 'animate-pulse' : ''}`} />
             {isAiLoading ? "Analyzing..." : "Deep AI Analysis"}
@@ -233,8 +246,8 @@ export default function Editor() {
             <div className="h-4 w-[1px] bg-stone-200 mx-1 md:mx-2" />
             <button 
               onClick={analyzeWithAi}
-              disabled={isAiLoading || !text.trim()}
-              className="px-3 py-1.5 md:px-4 md:py-2 bg-stone-900 text-white rounded-xl text-xs font-bold flex items-center gap-2 disabled:bg-stone-200"
+              disabled={isAiLoading || !text.trim() || stats.words > WORD_LIMIT}
+              className="px-3 py-1.5 md:px-4 md:py-2 bg-stone-900 text-white rounded-xl text-xs font-bold flex items-center gap-2 disabled:bg-stone-200 disabled:cursor-not-allowed"
             >
               <Sparkles className="w-3 h-3" />
               <span className="hidden sm:inline">Analyze</span>
@@ -244,17 +257,42 @@ export default function Editor() {
 
         <div ref={editorScrollRef} className="flex-1 overflow-y-auto w-full bg-stone-100 relative">
           <div className="max-w-3xl mx-auto w-full p-4 md:p-12 lg:p-16 pb-20">
-            <div className="bg-white rounded-3xl shadow-[0_1px_3px_rgba(0,0,0,0.05)] border border-stone-200 min-h-[85vh] p-8 md:p-16 relative mb-24">
-              <textarea
-                value={text}
-                onChange={(e) => {
-                  setText(e.target.value);
-                  if (showHowTo) setShowHowTo(false);
-                }}
-                placeholder="Paste your text or start writing here..."
-                className="w-full h-full min-h-[60vh] resize-none border-none focus:ring-0 bg-transparent text-lg md:text-xl leading-relaxed text-stone-800 placeholder-stone-200 font-sans tracking-tight"
-                spellCheck={false}
-              />
+            <div className="bg-white rounded-3xl shadow-[0_1px_3px_rgba(0,0,0,0.05)] border border-stone-200 min-h-[85vh] p-8 md:p-16 relative mb-24 flex flex-col">
+              <div className="flex-1">
+                <textarea
+                  value={text}
+                  onChange={(e) => {
+                    setText(e.target.value);
+                    if (showHowTo) setShowHowTo(false);
+                  }}
+                  placeholder="Paste your text or start writing here..."
+                  className="w-full h-full min-h-[60vh] resize-none border-none focus:ring-0 bg-transparent text-lg md:text-xl leading-relaxed text-stone-800 placeholder-stone-200 font-sans tracking-tight"
+                  spellCheck={false}
+                />
+              </div>
+
+              {/* Word Count Limit Indicator */}
+              <div className="mt-8 pt-8 border-t border-stone-100 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Usage</span>
+                    <div className="flex items-center gap-2">
+                       <div className="w-24 h-1.5 bg-stone-100 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full transition-all duration-500 ${stats.words > WORD_LIMIT ? 'bg-red-500' : 'bg-stone-900'}`}
+                            style={{ width: `${Math.min((stats.words / WORD_LIMIT) * 100, 100)}%` }}
+                          />
+                       </div>
+                       <span className={`text-xs font-bold font-mono ${stats.words > WORD_LIMIT ? 'text-red-500' : 'text-stone-400'}`}>
+                         {stats.words} / {WORD_LIMIT}
+                       </span>
+                    </div>
+                  </div>
+                </div>
+                {stats.words > WORD_LIMIT && (
+                  <p className="text-[10px] font-bold text-red-500 uppercase animate-pulse">Draft too long for AI</p>
+                )}
+              </div>
 
               {/* Guide Overlay when empty */}
               {!text && !showHowTo && (
@@ -413,41 +451,51 @@ export default function Editor() {
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 lg:grid-cols-1 gap-4 mb-8">
-                <div className="p-6 bg-stone-50 rounded-3xl border border-stone-100">
-                  <div className="flex items-baseline gap-2 mb-2">
-                    <span className="text-4xl lg:text-6xl font-black tracking-tighter">{aiFeedback.score}</span>
-                    <span className="text-stone-400 font-bold mb-1">/ 100</span>
-                  </div>
-                  <div className="h-1.5 w-full bg-stone-200 rounded-full overflow-hidden">
-                    <motion.div 
-                      initial={{ width: 0 }}
-                      animate={{ width: `${aiFeedback.score}%` }}
-                      className="h-full bg-stone-900"
-                    />
+              <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                <div className="grid grid-cols-2 lg:grid-cols-1 gap-4 mb-8 shrink-0">
+                  <div className="p-6 bg-stone-50 rounded-3xl border border-stone-100">
+                    <div className="flex items-baseline gap-2 mb-2">
+                      <span className="text-4xl lg:text-6xl font-black tracking-tighter">{aiFeedback.score}</span>
+                      <span className="text-stone-400 font-bold mb-1">/ 100</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-stone-200 rounded-full overflow-hidden">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${aiFeedback.score}%` }}
+                        className="h-full bg-stone-900"
+                      />
+                    </div>
                   </div>
                 </div>
-                <div className="hidden lg:block">
-                  <h4 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-4">Summary</h4>
-                  <p className="text-stone-600 leading-relaxed font-serif italic text-lg">{aiFeedback.summary}</p>
-                </div>
-              </div>
 
-              <div className="space-y-6 overflow-y-auto flex-1 pr-2">
-                <div className="lg:hidden">
-                  <h4 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2">Summary</h4>
-                  <p className="text-stone-600 leading-relaxed text-sm italic">{aiFeedback.summary}</p>
-                </div>
-                <div>
-                  <h4 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-4">Refinements</h4>
-                  <ul className="space-y-4">
-                    {aiFeedback.tips.map((tip, i) => (
-                      <li key={i} className="flex gap-3 text-sm text-stone-600 bg-stone-50/50 p-4 rounded-2xl border border-stone-100/50">
-                        <span className="font-bold text-stone-900">{i + 1}.</span>
-                        {tip}
-                      </li>
-                    ))}
-                  </ul>
+                <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+                  <div className="space-y-8 pb-12">
+                    <div className="lg:block space-y-6">
+                      <div>
+                        <h4 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-4">Summary</h4>
+                        <p className="text-stone-600 leading-relaxed font-serif italic text-lg">{aiFeedback.summary}</p>
+                      </div>
+                      <div>
+                        <h4 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-4">Critical Critique</h4>
+                        <p className="text-stone-600 leading-relaxed text-sm bg-amber-50/50 p-6 rounded-2xl border border-amber-100/50 relative overflow-hidden">
+                          <span className="relative z-10">{aiFeedback.critique}</span>
+                          <span className="absolute -bottom-4 -right-4 text-amber-100/30 font-black text-6xl select-none">!</span>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-4">Refinements</h4>
+                      <ul className="space-y-4">
+                        {aiFeedback.tips.map((tip, i) => (
+                          <li key={i} className="flex gap-4 text-sm text-stone-600 bg-stone-50/50 p-5 rounded-2xl border border-stone-100/50 transition-colors hover:border-stone-200">
+                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-stone-900 text-[10px] font-bold text-white uppercase">{i + 1}</span>
+                            <span className="leading-relaxed">{tip}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
                 </div>
               </div>
             </motion.div>
