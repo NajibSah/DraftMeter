@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { GoogleGenAI } from "@google/genai";
 import { 
   FileText, 
   Settings, 
@@ -82,43 +83,37 @@ export default function Editor() {
     setIsAiLoading(true);
     setIsSidebarOpen(false); // Close mobile sidebar if open
     
-    let attempts = 0;
-    const maxRetries = 3;
-    let lastError: any = null;
-
-    while (attempts < maxRetries) {
-      try {
-        const response = await fetch("/api/analyze", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ text }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || "Analysis failed");
-        }
-
-        const data = await response.json();
-        setAiFeedback(data);
-        setIsAiLoading(false);
-        return; // Success
-      } catch (error) {
-        attempts++;
-        lastError = error;
-        console.error(`AI Analysis attempt ${attempts} failed:`, error);
-        if (attempts < maxRetries) {
-          // Exponential backoff: 1s, 2s
-          await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
-        }
+    try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error("Gemini API key is not configured.");
       }
-    }
 
-    // If we reach here, all retries failed
-    alert("Service temporarily unavailable, please try again later.");
-    setIsAiLoading(false);
+      const ai = new GoogleGenAI({ apiKey });
+      const prompt = `Analyze this text: ${text}`;
+      const systemInstruction = "You are a world-class critical editor. Provide a rigorous, unvarnished analysis of the provided text. Focus on identifying structural weaknesses, logical gaps, and stylistic inconsistencies. Return a JSON object with: 'score' (0-100 reflecting structural maturity), 'summary' (a brief overview), 'critique' (a detailed critical evaluation of flaws and weaknesses, max 100 words), and 'tips' (3 actionable strategies for improvement).";
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [{ parts: [{ text: prompt }] }],
+        config: {
+          systemInstruction,
+          responseMimeType: "application/json",
+        }
+      });
+
+      if (!response.text) {
+        throw new Error("No response from AI.");
+      }
+
+      const data = JSON.parse(response.text);
+      setAiFeedback(data);
+    } catch (error) {
+      console.error("AI Analysis failed:", error);
+      alert("Service temporarily unavailable, please try again later.");
+    } finally {
+      setIsAiLoading(false);
+    }
   };
 
   const scrollToEditorAndLoad = () => {
