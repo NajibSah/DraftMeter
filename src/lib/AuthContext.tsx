@@ -24,12 +24,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Auto-login anonymously to fulfill "don't show the login" and "recover the database"
         try {
           await signInAnonymously(auth);
-        } catch (error: any) {
-          if (error.code === 'auth/admin-restricted-operation') {
-            console.warn("Firebase Anonymous Auth is disabled. Please enable it in your Firebase Console (Authentication > Sign-in method) to allow saving drafts without a manual login.");
-          } else {
-            console.error("Anonymous sign-in error:", error);
-          }
+        } catch (error) {
+          console.error("Anonymous sign-in error:", error);
           setLoading(false);
         }
       }

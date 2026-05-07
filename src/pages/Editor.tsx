@@ -23,6 +23,7 @@ import {
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../lib/AuthContext";
 import { db, addDoc, collection, serverTimestamp, handleFirestoreError, OperationType, query, where, getDocs } from "../lib/firebase";
+import { GoogleGenAI } from "@google/genai";
 
 export default function Editor() {
   const { user } = useAuth();
@@ -71,8 +72,6 @@ export default function Editor() {
     return { words, chars, readingTime, readability, avgSentenceLength };
   }, [text]);
 
-  const isOverLimit = stats.words > WORD_LIMIT;
-
   const maturityScore = useMemo(() => {
     if (!text.trim()) return 0;
     let score = 0;
@@ -94,20 +93,24 @@ export default function Editor() {
     setIsSidebarOpen(false); // Close mobile sidebar if open
     
     try {
-      const response = await fetch("/api/analyze", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ text }),
+      const gapi = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const systemInstruction = "You are a world-class critical editor. Provide a rigorous, unvarnished analysis of the provided text. Focus on identifying structural weaknesses, logical gaps, and stylistic inconsistencies. Return a JSON object with: 'score' (0-100 reflecting structural maturity), 'summary' (a brief overview), 'critique' (a detailed critical evaluation of flaws and weaknesses, max 100 words), and 'tips' (3 actionable strategies for improvement).";
+
+      const response = await gapi.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [{ parts: [{ text: `Analyze this text: ${text}` }] }],
+        config: {
+          systemInstruction,
+          responseMimeType: "application/json",
+        }
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || "Analysis failed");
+      if (!response.text) {
+        throw new Error("No response from AI.");
       }
 
-      const data = await response.json();
+      const rawText = response.text.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
+      const data = JSON.parse(rawText);
       setAiFeedback(data);
     } catch (error) {
       console.error("AI Analysis failed:", error);
@@ -118,12 +121,7 @@ export default function Editor() {
   };
 
   const saveToDatabase = async () => {
-    if (!text.trim() || isSaving) return;
-
-    if (!user) {
-      alert("Saving failed: Authentication is required. This usually happens if 'Anonymous Authentication' is not enabled in your Firebase Console (Authentication > Sign-in method). Please check the browser console for details.");
-      return;
-    }
+    if (!text.trim() || !user || isSaving) return;
 
     setIsSaving(true);
     setSaveStatus("idle");
@@ -318,16 +316,11 @@ export default function Editor() {
           </button>
           <button 
             onClick={analyzeWithAi}
-            disabled={isAiLoading || !text.trim() || isOverLimit}
-            title={isOverLimit ? `Word limit of ${WORD_LIMIT} exceeded` : "Start deep AI evaluation"}
-            className={`w-full group relative overflow-hidden flex items-center justify-center gap-2 rounded-2xl px-4 py-4 text-sm font-bold transition-all ${
-              isOverLimit 
-                ? "bg-stone-100 text-stone-400 cursor-not-allowed border border-stone-200" 
-                : "bg-stone-900 text-white hover:bg-stone-800 shadow-lg shadow-stone-200"
-            }`}
+            disabled={isAiLoading || !text.trim() || stats.words > WORD_LIMIT}
+            className="w-full group relative overflow-hidden flex items-center justify-center gap-2 rounded-2xl bg-stone-900 px-4 py-4 text-sm font-bold text-white transition-all hover:bg-stone-800 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Sparkles className={`w-4 h-4 ${isAiLoading ? 'animate-pulse' : ''}`} />
-            {isAiLoading ? "Analyzing..." : isOverLimit ? "Limit Exceeded" : "Deep AI Analysis"}
+            {isAiLoading ? "Analyzing..." : "Deep AI Analysis"}
           </button>
         </div>
       </aside>
@@ -373,48 +366,14 @@ export default function Editor() {
             <div className="h-4 w-[1px] bg-stone-200 mx-1 md:mx-2" />
             <button 
               onClick={analyzeWithAi}
-              disabled={isAiLoading || !text.trim() || isOverLimit}
-              title={isOverLimit ? `Limit of ${WORD_LIMIT} words exceeded` : "Deep AI Analysis"}
-              className={`px-3 py-1.5 md:px-4 md:py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
-                isOverLimit 
-                  ? "bg-stone-100 text-stone-400 cursor-not-allowed opacity-50" 
-                  : "bg-stone-900 text-white hover:bg-stone-800"
-              }`}
+              disabled={isAiLoading || !text.trim() || stats.words > WORD_LIMIT}
+              className="px-3 py-1.5 md:px-4 md:py-2 bg-stone-900 text-white rounded-xl text-xs font-bold flex items-center gap-2 disabled:bg-stone-200 disabled:cursor-not-allowed"
             >
               <Sparkles className="w-3 h-3" />
               <span className="hidden sm:inline">Analyze</span>
             </button>
           </div>
         </header>
-
-        {/* Warning Banner */}
-        <AnimatePresence>
-          {isOverLimit && (
-            <motion.div 
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              className="bg-red-50 border-b border-red-100 overflow-hidden"
-            >
-              <div className="max-w-3xl mx-auto px-4 py-2 flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
-                  <div className="p-1 bg-red-100 rounded-lg">
-                    <Info className="w-4 h-4 text-red-600" />
-                  </div>
-                  <p className="text-xs font-medium text-red-800">
-                    Word limit exceeded ({stats.words}/{WORD_LIMIT}). Deep AI Analysis is limited to drafts under {WORD_LIMIT} words.
-                  </p>
-                </div>
-                <button 
-                  onClick={() => setText(prev => prev.split(/\s+/).slice(0, WORD_LIMIT).join(" "))}
-                  className="shrink-0 text-[10px] font-bold text-red-600 uppercase tracking-widest hover:underline"
-                >
-                  Trim to Limit
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
         <div ref={editorScrollRef} className="flex-1 overflow-y-auto w-full bg-stone-100 relative">
           <div className="max-w-3xl mx-auto w-full p-4 md:p-12 lg:p-16 pb-20">
@@ -433,37 +392,25 @@ export default function Editor() {
               </div>
 
               {/* Word Count Limit Indicator */}
-              <div className="mt-8 pt-8 border-t border-stone-100">
-                <div className="flex items-center justify-between mb-2">
-                   <div className="flex items-center gap-2">
-                      <span className={`text-[10px] font-bold uppercase tracking-widest ${isOverLimit ? 'text-red-500' : 'text-stone-400'}`}>
-                        AI Analysis Capacity
-                      </span>
-                      {isOverLimit && <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />}
-                   </div>
-                   <span className={`text-[10px] font-bold font-mono ${isOverLimit ? 'text-red-500' : 'text-stone-400'}`}>
-                     {stats.words} / {WORD_LIMIT} WORDS
-                   </span>
+              <div className="mt-8 pt-8 border-t border-stone-100 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Usage</span>
+                    <div className="flex items-center gap-2">
+                       <div className="w-24 h-1.5 bg-stone-100 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full transition-all duration-500 ${stats.words > WORD_LIMIT ? 'bg-red-500' : 'bg-stone-900'}`}
+                            style={{ width: `${Math.min((stats.words / WORD_LIMIT) * 100, 100)}%` }}
+                          />
+                       </div>
+                       <span className={`text-xs font-bold font-mono ${stats.words > WORD_LIMIT ? 'text-red-500' : 'text-stone-400'}`}>
+                         {stats.words} / {WORD_LIMIT}
+                       </span>
+                    </div>
+                  </div>
                 </div>
-                <div className="w-full h-2 bg-stone-50 rounded-full overflow-hidden border border-stone-100">
-                  <motion.div 
-                    initial={false}
-                    animate={{ 
-                      width: `${Math.min((stats.words / WORD_LIMIT) * 100, 100)}%`,
-                      backgroundColor: isOverLimit ? "#ef4444" : "#1c1917"
-                    }}
-                    className="h-full transition-colors duration-300 shadow-sm"
-                  />
-                </div>
-                {isOverLimit && (
-                  <motion.p 
-                    initial={{ opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="mt-3 text-[10px] font-bold text-red-500 uppercase flex items-center gap-1.5"
-                  >
-                    <ShieldCheck className="w-3 h-3" />
-                    Deep Analysis restricted: Please shorten your draft.
-                  </motion.p>
+                {stats.words > WORD_LIMIT && (
+                  <p className="text-[10px] font-bold text-red-500 uppercase animate-pulse">Draft too long for AI</p>
                 )}
               </div>
 

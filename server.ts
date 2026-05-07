@@ -3,7 +3,6 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import { GoogleGenAI } from "@google/genai";
-import "dotenv/config";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,45 +12,6 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json());
-
-  // Private AI Analysis Route
-  app.post("/api/analyze", async (req, res) => {
-    try {
-      const { text } = req.body;
-      const apiKey = process.env.GEMINI_API_KEY;
-
-      if (!apiKey || apiKey.trim() === "" || apiKey === "YOUR_API_KEY") {
-        return res.status(500).json({ error: "Gemini API key is not configured on the server." });
-      }
-
-      if (!text) {
-        return res.status(400).json({ error: "No text provided" });
-      }
-
-      const ai = new GoogleGenAI({ apiKey });
-      const systemInstruction = "You are a world-class critical editor. Provide a rigorous, unvarnished analysis of the provided text. Focus on identifying structural weaknesses, logical gaps, stylistic inconsistencies. Return a JSON object with: 'score' (0-100), 'summary', 'critique' (max 100 words), 'tips' (3 items).";
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [{ parts: [{ text: `Analyze this text: ${text}` }] }],
-        config: {
-          systemInstruction,
-          responseMimeType: "application/json",
-        }
-      });
-
-      if (!response.text) {
-        throw new Error("No response text from AI");
-      }
-
-      const rawText = response.text.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
-      const data = JSON.parse(rawText);
-      res.json(data);
-    } catch (error: any) {
-      console.error("AI Analysis error:", error);
-      res.status(503).json({ error: "Service temporarily unavailable, please try again later." });
-    }
-  });
   
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
