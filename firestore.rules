@@ -1,0 +1,55 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // User Profile Rules
+    function isValidUser(data) {
+      return data.email is string && data.email.size() <= 256 &&
+             data.createdAt == request.time;
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow create: if isOwner(userId) && isValidId(userId) && isValidUser(incoming());
+      allow update: if isOwner(userId) && isValidId(userId) && 
+                      incoming().diff(existing()).affectedKeys().hasOnly(['email']) &&
+                      incoming().email is string && incoming().email.size() <= 256;
+      // No listing users, no deleting for now
+    }
+
+    // Draft Rules
+    function isValidDraft(data) {
+      return data.userId == request.auth.uid &&
+             data.content is string && data.content.size() <= 100000 &&
+             (data.get('score', null) == null || (data.score is number && data.score >= 0 && data.score <= 100)) &&
+             (data.get('summary', null) == null || (data.summary is string && data.summary.size() <= 10000)) &&
+             (data.get('critique', null) == null || (data.critique is string && data.critique.size() <= 10000)) &&
+             (data.get('tips', null) == null || (data.tips is list && data.tips.size() <= 20)) &&
+             data.createdAt is timestamp &&
+             data.updatedAt == request.time;
+    }
+
+    match /drafts/{draftId} {
+      allow get, delete: if isSignedIn() && existing().userId == request.auth.uid && isValidId(draftId);
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(draftId) && isValidDraft(incoming()) && incoming().createdAt == request.time;
+      allow update: if isSignedIn() && existing().userId == request.auth.uid && isValidId(draftId) &&
+                      isValidDraft(incoming()) &&
+                      incoming().createdAt == existing().createdAt &&
+                      incoming().userId == existing().userId &&
+                      incoming().diff(existing()).affectedKeys().hasAny(['content', 'score', 'summary', 'critique', 'tips', 'updatedAt']);
+    }
+  }
+}

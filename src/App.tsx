@@ -33,22 +33,26 @@ function MainLayout({ children }: { children: React.ReactNode }) {
   );
 }
 
+import { AuthProvider } from "./lib/AuthContext";
+
 export default function App() {
   return (
-    <Router>
-      <ScrollToTop />
-      <MainLayout>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/how-to" element={<HowTo />} />
-          <Route path="/editor" element={<Editor />} />
-          <Route path="/privacy" element={<Privacy />} />
-          <Route path="/terms" element={<Terms />} />
-          <Route path="/about" element={<About />} />
-          <Route path="/contact" element={<Contact />} />
-        </Routes>
-      </MainLayout>
-    </Router>
+    <AuthProvider>
+      <Router>
+        <ScrollToTop />
+        <MainLayout>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/how-to" element={<HowTo />} />
+            <Route path="/editor" element={<Editor />} />
+            <Route path="/privacy" element={<Privacy />} />
+            <Route path="/terms" element={<Terms />} />
+            <Route path="/about" element={<About />} />
+            <Route path="/contact" element={<Contact />} />
+          </Routes>
+        </MainLayout>
+      </Router>
+    </AuthProvider>
   );
 }
 
