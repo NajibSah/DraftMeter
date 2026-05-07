@@ -82,43 +82,28 @@ export default function Editor() {
     setIsAiLoading(true);
     setIsSidebarOpen(false); // Close mobile sidebar if open
     
-    let attempts = 0;
-    const maxRetries = 3;
-    let lastError: any = null;
+    try {
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text }),
+      });
 
-    while (attempts < maxRetries) {
-      try {
-        const response = await fetch("/api/analyze", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ text }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || "Analysis failed");
-        }
-
-        const data = await response.json();
-        setAiFeedback(data);
-        setIsAiLoading(false);
-        return; // Success
-      } catch (error) {
-        attempts++;
-        lastError = error;
-        console.error(`AI Analysis attempt ${attempts} failed:`, error);
-        if (attempts < maxRetries) {
-          // Exponential backoff: 1s, 2s
-          await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
-        }
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Analysis failed");
       }
-    }
 
-    // If we reach here, all retries failed
-    alert("Service temporarily unavailable, please try again later.");
-    setIsAiLoading(false);
+      const data = await response.json();
+      setAiFeedback(data);
+    } catch (error: any) {
+      console.error("AI Analysis failed:", error);
+      alert(error?.message || "Service temporarily unavailable, please try again later.");
+    } finally {
+      setIsAiLoading(false);
+    }
   };
 
   const scrollToEditorAndLoad = () => {

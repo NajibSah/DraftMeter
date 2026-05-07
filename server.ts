@@ -20,7 +20,8 @@ async function startServer() {
       const apiKey = process.env.GEMINI_API_KEY;
 
       if (!apiKey || apiKey.trim() === "" || apiKey === "YOUR_API_KEY") {
-        return res.status(500).json({ error: "Gemini API key is not configured on the server." });
+        console.error("GEMINI_API_KEY is not configured on the server.");
+        return res.status(500).json({ error: "Server configuration error: Missing API key." });
       }
 
       if (!text) {
@@ -28,11 +29,16 @@ async function startServer() {
       }
 
       const ai = new GoogleGenAI({ apiKey });
+      
+      const prompt = `You are a world-class critical editor. Provide a rigorous, unvarnished analysis of the provided text. Focus on identifying structural weaknesses, logical gaps, and stylistic inconsistencies. Return a JSON object with: 'score' (0-100 reflecting structural maturity), 'summary' (a brief overview), 'critique' (a detailed critical evaluation of flaws and weaknesses, max 100 words), and 'tips' (3 actionable strategies for improvement).
+      
+      Text to analyze:
+      ${text}`;
+
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: text,
+        contents: prompt,
         config: {
-          systemInstruction: "You are a world-class critical editor. Provide a rigorous, unvarnished analysis of the provided text. Focus on identifying structural weaknesses, logical gaps, and stylistic inconsistencies. Return a JSON object with: 'score' (0-100 reflecting structural maturity), 'summary' (a brief overview), 'critique' (a detailed critical evaluation of flaws and weaknesses, max 100 words), and 'tips' (3 actionable strategies for improvement).",
           responseMimeType: "application/json",
         }
       });
@@ -41,11 +47,13 @@ async function startServer() {
         throw new Error("No response text from AI");
       }
 
-      const data = JSON.parse(response.text);
+      let responseText = response.text.trim();
+      
+      const data = JSON.parse(responseText);
       res.json(data);
     } catch (error: any) {
       console.error("AI Analysis error:", error);
-      res.status(503).json({ error: "Service temporarily unavailable, please try again later." });
+      res.status(503).json({ error: "Analysis service currently unavailable. Please try again in a moment." });
     }
   });
 
