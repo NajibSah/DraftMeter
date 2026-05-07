@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User, signInAnonymously } from 'firebase/auth';
 import { 
   getFirestore, 
   doc, 
@@ -16,7 +16,16 @@ import {
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
-const app = initializeApp(firebaseConfig);
+const firebaseApiKey = process.env.GEMINI_API_KEY || (import.meta as any).env.VITE_FIREBASE_API_KEY || firebaseConfig.apiKey;
+
+if (!firebaseApiKey) {
+  console.warn("Firebase API Key is missing. Please ensure GEMINI_API_KEY or VITE_FIREBASE_API_KEY is set in your environment variables.");
+}
+
+const app = initializeApp({
+  ...firebaseConfig,
+  apiKey: firebaseApiKey
+});
 export const auth = getAuth(app);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
@@ -60,6 +69,21 @@ interface FirestoreErrorInfo {
     }[];
   }
 }
+
+export { 
+  signInAnonymously,
+  doc,
+  getDocFromServer,
+  collection,
+  addDoc,
+  updateDoc,
+  query,
+  where,
+  getDocs,
+  serverTimestamp,
+  Timestamp,
+  deleteDoc
+};
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   const errInfo: FirestoreErrorInfo = {

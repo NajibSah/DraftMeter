@@ -1,6 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { GoogleGenAI } from "@google/genai";
 import { 
   FileText, 
   Settings, 
@@ -17,14 +16,23 @@ import {
   ArrowRight,
   Search,
   ShieldCheck,
-  ArrowLeft
+  ArrowLeft,
+  Save,
+  Loader2
 } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
+import { useAuth } from "../lib/AuthContext";
+import { db, addDoc, collection, serverTimestamp, handleFirestoreError, OperationType, query, where, getDocs } from "../lib/firebase";
 
 export default function Editor() {
+  const { user } = useAuth();
   const [text, setText] = useState("");
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [aiFeedback, setAiFeedback] = useState<null | { score: number; summary: string; critique: string; tips: string[] }>(null);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle");
+  const [history, setHistory] = useState<any[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   
   const WORD_LIMIT = 1500;
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -84,29 +92,20 @@ export default function Editor() {
     setIsSidebarOpen(false); // Close mobile sidebar if open
     
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        throw new Error("Gemini API key is not configured.");
-      }
-
-      const ai = new GoogleGenAI({ apiKey });
-      const prompt = `Analyze this text: ${text}`;
-      const systemInstruction = "You are a world-class critical editor. Provide a rigorous, unvarnished analysis of the provided text. Focus on identifying structural weaknesses, logical gaps, and stylistic inconsistencies. Return a JSON object with: 'score' (0-100 reflecting structural maturity), 'summary' (a brief overview), 'critique' (a detailed critical evaluation of flaws and weaknesses, max 100 words), and 'tips' (3 actionable strategies for improvement).";
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [{ parts: [{ text: prompt }] }],
-        config: {
-          systemInstruction,
-          responseMimeType: "application/json",
-        }
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text }),
       });
 
-      if (!response.text) {
-        throw new Error("No response from AI.");
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Analysis failed");
       }
 
-      const data = JSON.parse(response.text);
+      const data = await response.json();
       setAiFeedback(data);
     } catch (error) {
       console.error("AI Analysis failed:", error);
@@ -114,6 +113,76 @@ export default function Editor() {
     } finally {
       setIsAiLoading(false);
     }
+  };
+
+  const saveToDatabase = async () => {
+    if (!text.trim() || isSaving) return;
+
+    if (!user) {
+      alert("Saving failed: Authentication is required. This usually happens if 'Anonymous Authentication' is not enabled in your Firebase Console (Authentication > Sign-in method). Please check the browser console for details.");
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveStatus("idle");
+
+    try {
+      const draftData = {
+        userId: user.uid,
+        content: text,
+        score: aiFeedback?.score || maturityScore,
+        summary: aiFeedback?.summary || "Self-analysis summary",
+        critique: aiFeedback?.critique || "Detailed critique pending AI analysis.",
+        tips: aiFeedback?.tips || [],
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+
+      await addDoc(collection(db, "drafts"), draftData);
+      setSaveStatus("success");
+      fetchHistory(); // Refresh history
+      setTimeout(() => setSaveStatus("idle"), 3000);
+    } catch (error) {
+      console.error("Save failed:", error);
+      setSaveStatus("error");
+      handleFirestoreError(error, OperationType.WRITE, "drafts");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const fetchHistory = useCallback(async () => {
+    if (!user) return;
+    setIsLoadingHistory(true);
+    try {
+      const q = query(collection(db, "drafts"), where("userId", "==", user.uid));
+      const querySnapshot = await getDocs(q);
+      const docs = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // Sort by createdAt desc locally since we might not have an index yet
+      docs.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+      setHistory(docs);
+    } catch (error) {
+      console.error("History fetch failed:", error);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      fetchHistory();
+    }
+  }, [user, fetchHistory]);
+
+  const loadHistoryItem = (item: any) => {
+    setText(item.content);
+    setAiFeedback({
+      score: item.score,
+      summary: item.summary,
+      critique: item.critique,
+      tips: item.tips || []
+    });
+    setIsSidebarOpen(false);
   };
 
   const scrollToEditorAndLoad = () => {
@@ -204,6 +273,40 @@ export default function Editor() {
           </div>
         </div>
 
+        <div className="flex flex-col gap-4 flex-1 min-h-0">
+          <div className="flex items-center justify-between px-1">
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">History</h3>
+            {isLoadingHistory && <Loader2 className="w-3 h-3 text-stone-300 animate-spin" />}
+          </div>
+          <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+            {history.length === 0 ? (
+              <div className="text-[10px] text-stone-400 italic px-1 py-4 text-center border border-dashed border-stone-200 rounded-xl">
+                No saved drafts yet.
+              </div>
+            ) : (
+              history.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => loadHistoryItem(item)}
+                  className="w-full text-left p-3 rounded-xl border border-stone-100 hover:border-stone-300 hover:bg-stone-50 transition-all flex flex-col gap-1 group"
+                >
+                  <span className="text-[10px] font-bold text-stone-900 truncate">
+                    {item.content.substring(0, 40)}...
+                  </span>
+                  <div className="flex items-center justify-between">
+                     <span className="text-[8px] font-bold text-stone-400 uppercase tracking-tighter">
+                      {item.createdAt?.seconds ? new Date(item.createdAt.seconds * 1000).toLocaleDateString() : 'Just now'}
+                    </span>
+                    <span className="text-[8px] font-bold text-stone-900 bg-stone-100 px-1.5 py-0.5 rounded">
+                      {item.score}%
+                    </span>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+
         <div className="mt-auto space-y-4">
            <button 
             onClick={() => setShowHowTo(true)}
@@ -249,6 +352,16 @@ export default function Editor() {
               className="p-2 hover:bg-stone-100 rounded-xl text-stone-400 transition-colors hidden sm:block"
             >
               {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            </button>
+            <div className="h-4 w-[1px] bg-stone-200 mx-1 md:mx-2" />
+            <button 
+              onClick={saveToDatabase}
+              disabled={isSaving || !text.trim()}
+              className="p-2 hover:bg-stone-100 rounded-xl text-stone-400 transition-colors flex items-center gap-2"
+              title="Save to Cloud"
+            >
+              {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className={`w-4 h-4 ${saveStatus === 'success' ? 'text-green-500' : ''}`} />}
+              {saveStatus === 'success' && <span className="text-[10px] font-bold text-green-500 hidden sm:inline">Saved</span>}
             </button>
             <div className="h-4 w-[1px] bg-stone-200 mx-1 md:mx-2" />
             <button 

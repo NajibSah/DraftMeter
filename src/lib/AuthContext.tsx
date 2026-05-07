@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
+import { User, onAuthStateChanged, signInWithPopup, signOut, signInAnonymously } from 'firebase/auth';
 import { auth, googleProvider } from './firebase';
 
 interface AuthContextType {
@@ -16,9 +16,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
-      setLoading(false);
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setUser(user);
+        setLoading(false);
+      } else {
+        // Auto-login anonymously to fulfill "don't show the login" and "recover the database"
+        try {
+          await signInAnonymously(auth);
+        } catch (error: any) {
+          if (error.code === 'auth/admin-restricted-operation') {
+            console.warn("Firebase Anonymous Auth is disabled. Please enable it in your Firebase Console (Authentication > Sign-in method) to allow saving drafts without a manual login.");
+          } else {
+            console.error("Anonymous sign-in error:", error);
+          }
+          setLoading(false);
+        }
+      }
     });
     return unsubscribe;
   }, []);
