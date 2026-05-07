@@ -19,6 +19,7 @@ import {
   ArrowLeft
 } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
+import { GoogleGenAI } from "@google/genai";
 
 export default function Editor() {
   const [text, setText] = useState("");
@@ -83,24 +84,25 @@ export default function Editor() {
     setIsSidebarOpen(false); // Close mobile sidebar if open
     
     try {
-      const response = await fetch("/api/analyze", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ text }),
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: text,
+        config: {
+          systemInstruction: "You are a world-class critical editor. Provide a rigorous, unvarnished analysis of the provided text. Focus on identifying structural weaknesses, logical gaps, and stylistic inconsistencies. Return a JSON object with: 'score' (0-100 reflecting structural maturity), 'summary' (a brief overview), 'critique' (a detailed critical evaluation of flaws and weaknesses, max 100 words), and 'tips' (3 actionable strategies for improvement).",
+          responseMimeType: "application/json",
+        }
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || "Analysis failed");
+      if (!response.text) {
+        throw new Error("No response text from AI");
       }
 
-      const data = await response.json();
+      const data = JSON.parse(response.text);
       setAiFeedback(data);
     } catch (error: any) {
       console.error("AI Analysis failed:", error);
-      alert(error?.message || "Service temporarily unavailable, please try again later.");
+      alert("Analysis service currently unavailable. Please check your connection and try again.");
     } finally {
       setIsAiLoading(false);
     }
