@@ -1,12 +1,10 @@
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { useState } from "react";
-import { Menu, X, LogIn, LogOut, User as UserIcon } from "lucide-react";
-import { useAuth } from "../lib/AuthContext";
+import { Menu, X } from "lucide-react";
 
 export default function Header() {
   const [isOpen, setIsOpen] = useState(false);
-  const { user, signIn, logOut } = useAuth();
 
   const navLinks = [
     { name: "Home", path: "/" },
@@ -35,38 +33,6 @@ export default function Header() {
             </Link>
           ))}
           
-          <div className="h-4 w-[1px] bg-stone-200 mx-2" />
-
-          {user ? (
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 text-stone-900">
-                <div className="w-8 h-8 rounded-full bg-stone-200 flex items-center justify-center overflow-hidden">
-                  {user.photoURL ? (
-                    <img referrerPolicy="no-referrer" src={user.photoURL} alt={user.displayName || ""} className="w-full h-full object-cover" />
-                  ) : (
-                    <UserIcon className="w-4 h-4" />
-                  )}
-                </div>
-                <span className="text-xs font-bold truncate max-w-[100px]">{user.displayName?.split(' ')[0]}</span>
-              </div>
-              <button 
-                onClick={logOut}
-                className="p-2 text-stone-400 hover:text-stone-900 transition-colors"
-                title="Log Out"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
-            </div>
-          ) : (
-            <button 
-              onClick={signIn}
-              className="flex items-center gap-2 hover:text-stone-900 transition-colors px-1"
-            >
-              <LogIn className="w-4 h-4" />
-              Sign In
-            </button>
-          )}
-
           <Link 
             to="/editor" 
             className="rounded-full bg-stone-900 px-5 py-2 text-xs font-bold text-white transition-transform hover:scale-105 active:scale-95"

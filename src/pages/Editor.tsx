@@ -16,21 +16,13 @@ import {
   ArrowRight,
   Search,
   ShieldCheck,
-  ArrowLeft,
-  Save,
-  Check
+  ArrowLeft
 } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
-import { db, handleFirestoreError, OperationType } from "../lib/firebase";
-import { useAuth } from "../lib/AuthContext";
 
 export default function Editor() {
-  const { user, signIn } = useAuth();
   const [text, setText] = useState("");
   const [isAiLoading, setIsAiLoading] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isSaved, setIsSaved] = useState(false);
   const [aiFeedback, setAiFeedback] = useState<null | { score: number; summary: string; critique: string; tips: string[] }>(null);
   
   const WORD_LIMIT = 1500;
@@ -127,34 +119,6 @@ export default function Editor() {
     // If we reach here, all retries failed
     alert("Service temporarily unavailable, please try again later.");
     setIsAiLoading(false);
-  };
-
-  const saveToDatabase = async () => {
-    if (!user) {
-      await signIn();
-      return;
-    }
-    if (!text.trim() || isSaving) return;
-
-    setIsSaving(true);
-    try {
-      await addDoc(collection(db, "drafts"), {
-        userId: user.uid,
-        content: text,
-        score: aiFeedback?.score || maturityScore,
-        summary: aiFeedback?.summary || "",
-        critique: aiFeedback?.critique || "",
-        tips: aiFeedback?.tips || [],
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      setIsSaved(true);
-      setTimeout(() => setIsSaved(false), 3000);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, "drafts");
-    } finally {
-      setIsSaving(false);
-    }
   };
 
   const scrollToEditorAndLoad = () => {
@@ -278,20 +242,6 @@ export default function Editor() {
              </h2>
           </div>
           <div className="flex items-center gap-1 md:gap-2">
-            {user && (
-              <button 
-                onClick={saveToDatabase}
-                disabled={isSaving || !text.trim()}
-                className={`flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-xl text-xs font-bold border transition-all ${
-                  isSaved 
-                    ? 'bg-green-50 text-green-600 border-green-200' 
-                    : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50'
-                }`}
-              >
-                {isSaved ? <Check className="w-3 h-3" /> : <Save className={`w-3 h-3 ${isSaving ? 'animate-spin' : ''}`} />}
-                <span className="hidden sm:inline">{isSaved ? "Saved" : isSaving ? "Saving..." : "Save Draft"}</span>
-              </button>
-            )}
             <button 
               onClick={() => setText("")}
               className="p-2 hover:bg-stone-100 rounded-xl text-stone-400 transition-colors"
@@ -501,20 +451,9 @@ export default function Editor() {
             >
               <div className="w-12 h-1.5 bg-stone-200 rounded-full mx-auto mb-6 lg:hidden" />
                   <div className="flex items-center justify-between mb-8">
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-2">
-                        <Sparkles className="w-5 h-5 text-stone-900" />
-                        <h3 className="text-xl font-bold tracking-tight">AI Critique</h3>
-                      </div>
-                      {user && (
-                        <button 
-                          onClick={saveToDatabase}
-                          className="text-[10px] uppercase font-bold tracking-widest text-stone-400 hover:text-stone-900 flex items-center gap-1 transition-colors"
-                        >
-                          {isSaved ? <Check className="w-3 h-3 text-green-500" /> : <Save className="w-3 h-3" />}
-                          {isSaved ? "Draft Saved" : "Save this Analysis"}
-                        </button>
-                      )}
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-5 h-5 text-stone-900" />
+                      <h3 className="text-xl font-bold tracking-tight">AI Critique</h3>
                     </div>
                     <button 
                       onClick={() => setAiFeedback(null)}
