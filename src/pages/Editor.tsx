@@ -19,10 +19,6 @@ import {
   ArrowLeft
 } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
-import { GoogleGenAI } from "@google/genai";
-
-// Initialize Gemini
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export default function Editor() {
   const [text, setText] = useState("");
@@ -92,20 +88,20 @@ export default function Editor() {
 
     while (attempts < maxRetries) {
       try {
-        const response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          config: {
-            systemInstruction: "You are a world-class critical editor. Provide a rigorous, unvarnished analysis of the provided text. Focus on identifying structural weaknesses, logical gaps, and stylistic inconsistencies. Return a JSON object with: 'score' (0-100 reflecting structural maturity), 'summary' (a brief overview), 'critique' (a detailed critical evaluation of flaws and weaknesses, max 100 words), and 'tips' (3 actionable strategies for improvement).",
-            responseMimeType: "application/json",
+        const response = await fetch("/api/analyze", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
           },
-          contents: text
+          body: JSON.stringify({ text }),
         });
 
-        if (!response.text) {
-          throw new Error("No response text from AI");
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || "Analysis failed");
         }
 
-        const data = JSON.parse(response.text);
+        const data = await response.json();
         setAiFeedback(data);
         setIsAiLoading(false);
         return; // Success
