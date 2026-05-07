@@ -16,10 +16,11 @@ import {
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
-const firebaseApiKey = process.env.GEMINI_API_KEY || (import.meta as any).env.VITE_FIREBASE_API_KEY || firebaseConfig.apiKey;
+const firebaseApiKey = process.env.GEMINI_API_KEY || process.env.VITE_FIREBASE_API_KEY || (import.meta as any).env.VITE_FIREBASE_API_KEY || firebaseConfig.apiKey;
 
-if (!firebaseApiKey) {
-  console.warn("Firebase API Key is missing. Please ensure GEMINI_API_KEY or VITE_FIREBASE_API_KEY is set in your environment variables.");
+if (!firebaseApiKey || firebaseApiKey.length < 10) {
+  console.error("Firebase API Key is missing or invalid. Current value:", firebaseApiKey);
+  console.warn("Please ensure GEMINI_API_KEY or VITE_FIREBASE_API_KEY is set in your environment variables (Settings > Secrets in AI Studio, or .env file for local builds).");
 }
 
 const app = initializeApp({
