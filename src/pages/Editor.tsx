@@ -85,28 +85,44 @@ export default function Editor() {
     
     setIsAiLoading(true);
     setIsSidebarOpen(false); // Close mobile sidebar if open
-    try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        config: {
-          systemInstruction: "You are a world-class critical editor. Provide a rigorous, unvarnished analysis of the provided text. Focus on identifying structural weaknesses, logical gaps, and stylistic inconsistencies. Return a JSON object with: 'score' (0-100 reflecting structural maturity), 'summary' (a brief overview), 'critique' (a detailed critical evaluation of flaws and weaknesses, max 100 words), and 'tips' (3 actionable strategies for improvement).",
-          responseMimeType: "application/json",
-        },
-        contents: text
-      });
+    
+    let attempts = 0;
+    const maxRetries = 3;
+    let lastError: any = null;
 
-      if (!response.text) {
-        throw new Error("No response text from AI");
+    while (attempts < maxRetries) {
+      try {
+        const response = await ai.models.generateContent({
+          model: "gemini-3-flash-preview",
+          config: {
+            systemInstruction: "You are a world-class critical editor. Provide a rigorous, unvarnished analysis of the provided text. Focus on identifying structural weaknesses, logical gaps, and stylistic inconsistencies. Return a JSON object with: 'score' (0-100 reflecting structural maturity), 'summary' (a brief overview), 'critique' (a detailed critical evaluation of flaws and weaknesses, max 100 words), and 'tips' (3 actionable strategies for improvement).",
+            responseMimeType: "application/json",
+          },
+          contents: text
+        });
+
+        if (!response.text) {
+          throw new Error("No response text from AI");
+        }
+
+        const data = JSON.parse(response.text);
+        setAiFeedback(data);
+        setIsAiLoading(false);
+        return; // Success
+      } catch (error) {
+        attempts++;
+        lastError = error;
+        console.error(`AI Analysis attempt ${attempts} failed:`, error);
+        if (attempts < maxRetries) {
+          // Exponential backoff: 1s, 2s
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
+        }
       }
-
-      const data = JSON.parse(response.text);
-      setAiFeedback(data);
-    } catch (error) {
-      console.error("AI Analysis failed:", error);
-      alert(error instanceof Error ? error.message : "An unexpected error occurred");
-    } finally {
-      setIsAiLoading(false);
     }
+
+    // If we reach here, all retries failed
+    alert("Service temporarily unavailable, please try again later.");
+    setIsAiLoading(false);
   };
 
   const scrollToEditorAndLoad = () => {
