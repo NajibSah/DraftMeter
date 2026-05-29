@@ -25,7 +25,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           await signInAnonymously(auth);
         } catch (error) {
-          console.error("Anonymous sign-in error:", error);
+          if (error instanceof Error && error.message.includes('auth/admin-restricted-operation')) {
+            console.warn("Anonymous sign-in is not enabled in Firebase. Please enable it in the Firebase Console or remove the anonymous sign-in logic.");
+          } else {
+            console.error("Anonymous sign-in error:", error);
+          }
           setLoading(false);
         }
       }
